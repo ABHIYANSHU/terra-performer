@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config';
 import messageRoutes from './routes/messageRoutes';
+import keysRoutes from './routes/keysRoutes';
 
 // Initialize express app
 const app = express();
@@ -12,6 +13,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api', messageRoutes);
+app.use('/api', keysRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
