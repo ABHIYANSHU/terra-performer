@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * Clears all files in the terraform-scripts directory
+ * Clears only .tf files in the terraform-scripts directory
  */
 export const clearTerraformScriptsDirectory = (): void => {
   try {
@@ -13,17 +13,17 @@ export const clearTerraformScriptsDirectory = (): void => {
       // Read all files in the directory
       const files = fs.readdirSync(dirPath);
       
-      // Delete each file
+      // Delete only .tf files
       for (const file of files) {
         const filePath = path.join(dirPath, file);
         
-        // Check if it's a file (not a directory)
-        if (fs.statSync(filePath).isFile()) {
+        // Check if it's a file (not a directory) and has .tf extension
+        if (fs.statSync(filePath).isFile() && path.extname(filePath) === '.tf') {
           fs.unlinkSync(filePath);
         }
       }
       
-      console.log('Cleared all files from terraform-scripts directory');
+      console.log('Cleared all .tf files from terraform-scripts directory');
     } else {
       // Create the directory if it doesn't exist
       fs.mkdirSync(dirPath, { recursive: true });
