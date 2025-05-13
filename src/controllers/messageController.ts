@@ -43,7 +43,7 @@ export const processMessage = async (req: Request, res: Response): Promise<void>
       }
     }
     
-    res.status(200).json(result);
+    res.status(200).json({ message: result.replace(/</g, "&lt;").replace(/>/g, "&gt;") });
   } catch (error: any) {
     console.error('Error processing message:', error);
     res.status(500).json({ 

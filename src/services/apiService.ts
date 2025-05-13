@@ -14,7 +14,7 @@ export interface SavedTerraformFile {
 export const forwardRequest = async (prompt: string): Promise<string> => {
   try {
 
-    console.log('Received prompt:', prompt);
+    console.log('Received prompt:', JSON.stringify(prompt).replace(/[\r\n]/g, ''));
 
     const requestBody = {
       prompt: prompt
@@ -31,8 +31,8 @@ export const forwardRequest = async (prompt: string): Promise<string> => {
       }
     );
 
-    console.log('Received response:', response.data.response);
-
+    console.log('Received response:', JSON.stringify(response.data.response).replace(/[\r\n]/g, ''));
+    
     return response.data.response as string;
   } catch (error) {
     console.error('Error forwarding request:', error);
