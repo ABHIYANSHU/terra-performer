@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { config } from '../config';
+import { getExistingResourceNames } from './terraformService';
 
 export interface ChatMessage {
   role: string;
@@ -15,6 +16,10 @@ export const forwardRequest = async (prompt: string): Promise<string> => {
   try {
 
     console.log('Received prompt:', JSON.stringify(prompt).replace(/[\r\n]/g, ''));
+
+    var existing_resources = getExistingResourceNames();
+
+    console.log('Existing resources:', existing_resources);
 
     const requestBody = {
       prompt: prompt

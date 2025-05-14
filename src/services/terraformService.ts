@@ -1,7 +1,17 @@
 import { spawn } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 import { getAwsAccessKey, getAwsSecretKey } from './keysService';
 import { emitTerraformOutput, emitTerraformStatus } from './socketService';
+
+/**
+ * Interface representing a Terraform resource
+ */
+export interface TerraformResource {
+  type: string;
+  name: string;
+  file: string;
+}
 
 /**
  * Runs terraform apply command with stored AWS credentials and streams output
@@ -74,4 +84,77 @@ export const runTerraformApply = (scriptPath?: string): Promise<string> => {
       reject(error);
     });
   });
+};
+
+/**
+ * Gets all resource names from Terraform scripts in the terraform-scripts folder
+ * @returns Array of Terraform resources with type, name, and file information
+ */
+export const getTerraformResourceNames = (): TerraformResource[] => {
+  const terraformDir = path.join(process.cwd(), 'terraform-scripts');
+  const resources: TerraformResource[] = [];
+  
+  try {
+    // Get all .tf files from the terraform-scripts directory
+    const files = fs.readdirSync(terraformDir)
+      .filter(file => file.endsWith('.tf'));
+    
+    // Process each file
+    for (const file of files) {
+      const filePath = path.join(terraformDir, file);
+      const content = fs.readFileSync(filePath, 'utf8');
+      
+      // Use regex to find resource declarations
+      // Format: resource "type" "name" { ... }
+      const resourceRegex = /resource\s+"([^"]+)"\s+"([^"]+)"\s*{/g;
+      let match;
+      
+      while ((match = resourceRegex.exec(content)) !== null) {
+        const resourceType = match[1];
+        const resourceName = match[2];
+        
+        resources.push({
+          type: resourceType,
+          name: resourceName,
+          file: file
+        });
+      }
+    }
+    
+    return resources;
+  } catch (error) {
+    console.error('Error reading Terraform files:', error);
+    return [];
+  }
+};
+
+/**
+ * Gets a formatted string of existing resource names
+ * @returns String containing resource names
+ */
+export const getExistingResourceNames = (): string => {
+  const resources = getTerraformResourceNames();
+  
+  if (resources.length === 0) {
+    return '';
+  }
+  
+  // Group resources by type for better readability
+  const resourcesByType: Record<string, string[]> = {};
+  
+  resources.forEach(resource => {
+    if (!resourcesByType[resource.type]) {
+      resourcesByType[resource.type] = [];
+    }
+    resourcesByType[resource.type].push(resource.name);
+  });
+  
+  // Format the output
+  let result = '';
+  
+  for (const [type, names] of Object.entries(resourcesByType)) {
+    result += `${type}: ${names.join(', ')}\n`;
+  }
+  
+  return result;
 };

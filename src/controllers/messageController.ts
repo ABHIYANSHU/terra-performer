@@ -22,7 +22,7 @@ export const processMessage = async (req: Request, res: Response): Promise<void>
     // Check if the response contains Terraform code
     if (apiResponse && apiResponse.message) {
 
-      clearTerraformScriptsDirectory();
+      // clearTerraformScriptsDirectory();
 
       // Extract Terraform code blocks from the response
       const terraformCodeBlocks = extractTerraformCode(apiResponse.message);

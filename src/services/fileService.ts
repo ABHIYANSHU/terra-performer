@@ -69,6 +69,58 @@ export const extractTerraformCode = (content: string): string[] => {
 };
 
 /**
+ * Adds timestamp to resource names in Terraform code
+ * @param code The Terraform code to modify
+ * @returns The modified Terraform code with timestamped resource names
+ */
+export const addTimestampToResourceNames = (code: string): string => {
+  try {
+    // Generate timestamp in format YYYYMMDD_HHMMSS
+    const now = new Date();
+    const timestamp = now.toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\..+/, '')
+      .replace('T', '_');
+    
+    // First, collect all resource names and their timestamped versions
+    const resourceMap: Record<string, string> = {};
+    const resourceRegex = /resource\s+"([^"]+)"\s+"([^"]+)"\s*{/g;
+    let match;
+    
+    // Create a copy of the code to find all resources
+    let tempCode = code;
+    while ((match = resourceRegex.exec(tempCode)) !== null) {
+      const resourceType = match[1];
+      const resourceName = match[2];
+      const timestampedName = `${resourceName}_${timestamp}`;
+      resourceMap[resourceName] = timestampedName;
+    }
+    
+    // First, replace resource declarations
+    let modifiedCode = code.replace(
+      /resource\s+"([^"]+)"\s+"([^"]+)"\s*{/g, 
+      (match, type, name) => `resource "${type}" "${name}_${timestamp}" {`
+    );
+    
+    // Then, replace all references to these resources
+    for (const [originalName, timestampedName] of Object.entries(resourceMap)) {
+      // Replace references like aws_instance.app_server.id
+      const referenceRegex = new RegExp(`([^"\\w])${originalName}\\.(\\w+)`, 'g');
+      modifiedCode = modifiedCode.replace(referenceRegex, `$1${timestampedName}.$2`);
+      
+      // Replace references in square brackets like [aws_security_group.allow_all.name]
+      const bracketRegex = new RegExp(`\\[(\\s*)${originalName}(\\s*)\\.`, 'g');
+      modifiedCode = modifiedCode.replace(bracketRegex, `[$1${timestampedName}$2.`);
+    }
+    
+    return modifiedCode;
+  } catch (error) {
+    console.error('Error adding timestamps to resource names:', error);
+    return code;
+  }
+};
+
+/**
  * Saves Terraform code to a file
  * @param code The Terraform code to save
  * @returns The path to the saved file
@@ -82,6 +134,9 @@ export const saveTerraformCode = (code: string): string => {
       .replace(/\..+/, '')
       .replace('T', '_');
     
+    // Add timestamps to resource names
+    const modifiedCode = addTimestampToResourceNames(code);
+    
     const fileName = `main-${dateTime}.tf`;
     const dirPath = path.resolve(process.cwd(), 'terraform-scripts');
     const filePath = path.join(dirPath, fileName);
@@ -92,7 +147,7 @@ export const saveTerraformCode = (code: string): string => {
     }
     
     // Write the code to the file
-    fs.writeFileSync(filePath, code);
+    fs.writeFileSync(filePath, modifiedCode);
     
     return filePath;
   } catch (error) {
