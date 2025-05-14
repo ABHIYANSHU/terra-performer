@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terraform Output Listener</title>
+  <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+  <style>
+    body {
+      font-family: monospace;
+      margin: 20px;
+    }
+    #output {
+      background-color: #000;
+      color: #0f0;
+      padding: 10px;
+      border-radius: 5px;
+      height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    button {
+      margin: 10px 0;
+      padding: 8px 16px;
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0055aa;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .status-started {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+    .status-completed {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .status-error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+  <h1>Terraform Output Listener</h1>
+  
+  <button id="applyBtn">Run Terraform Apply</button>
+  <button id="clearBtn">Clear Output</button>
+  
+  <div id="status" class="status"></div>
+  
+  <h2>Console Output:</h2>
+  <pre id="output"></pre>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const outputElement = document.getElementById('output');
+      const statusElement = document.getElementById('status');
+      const applyBtn = document.getElementById('applyBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      
+      // Connect to Socket.IO server
+      const socket = io(window.location.origin);
+      
+      // Handle connection events
+      socket.on('connect', () => {
+        console.log('Connected to server');
+        appendOutput('Connected to server\n');
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('Disconnected from server');
+        appendOutput('Disconnected from server\n');
+      });
+      
+      // Listen for terraform output events
+      socket.on('terraform-output', (data) => {
+        appendOutput(data.output);
+      });
+      
+      // Listen for terraform status events
+      socket.on('terraform-status', (data) => {
+        updateStatus(data.status, data.message);
+      });
+      
+      // Handle apply button click
+      applyBtn.addEventListener('click', async () => {
+        try {
+          applyBtn.disabled = true;
+          appendOutput('Sending terraform apply request...\n');
+          
+          const response = await fetch('/api/terraform/apply', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          const result = await response.json();
+          appendOutput(`Server response: ${JSON.stringify(result)}\n`);
+          
+          if (!response.ok) {
+            throw new Error(result.message || 'Failed to start terraform apply');
+          }
+        } catch (error) {
+          appendOutput(`Error: ${error.message}\n`);
+          updateStatus('error', error.message);
+        } finally {
+          applyBtn.disabled = false;
+        }
+      });
+      
+      // Handle clear button click
+      clearBtn.addEventListener('click', () => {
+        outputElement.textContent = '';
+        statusElement.textContent = '';
+        statusElement.className = 'status';
+      });
+      
+      // Helper function to append output
+      function appendOutput(text) {
+        outputElement.textContent += text;
+        outputElement.scrollTop = outputElement.scrollHeight;
+      }
+      
+      // Helper function to update status
+      function updateStatus(status, message) {
+        statusElement.textContent = `${status.toUpperCase()}: ${message || ''}`;
+        statusElement.className = `status status-${status}`;
+      }
+    });
+  </script>
+</body>
+</html>

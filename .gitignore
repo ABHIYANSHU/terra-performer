@@ -24,3 +24,5 @@ Thumbs.db
 
 # Terraform scripts directory
 terraform-scripts/
+apply-terraform.bat
+package-lock.json

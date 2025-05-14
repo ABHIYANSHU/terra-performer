@@ -1,97 +1,85 @@
-# Terra-Performer
+# Terra Performer
 
-A Node.js backend application that listens for POST requests, forwards them to an AI API endpoint, and saves any Terraform code blocks in the response.
+A Node.js application that executes Terraform scripts with real-time output streaming.
 
 ## Features
 
-- Receives POST requests with prompt content
-- Forwards requests to the specified AI API endpoint
-- Extracts and saves Terraform code blocks from responses
-- Clears existing Terraform files before saving new ones
-- Handles authentication with API token
-- Built with TypeScript for type safety
+- Forward requests to an AI API
+- Extract and save Terraform code from API responses
+- Execute Terraform scripts with AWS credentials
+- Stream Terraform execution output in real-time via WebSockets
 
-## Installation
+## Setup
 
 1. Clone the repository
 2. Install dependencies:
    ```
    npm install
    ```
-3. Create a `.env` file in the root directory with the following variables:
+3. Create a `.env` file with the following variables:
    ```
    PORT=3000
-   API_URL=https://labs-ai-proxy.acloud.guru/rest/openai/chatgpt-4o/v1/chat/completions
+   API_URL=your_api_url
    API_TOKEN=your_api_token
+   ```
+4. Build the application:
+   ```
+   npm run build
+   ```
+5. Start the server:
+   ```
+   npm start
    ```
 
 ## Usage
 
-### Development
+### Setting AWS Credentials
+
+Before executing Terraform scripts, you need to set your AWS credentials:
 
 ```
-npm run dev
+POST /api/keys
+Content-Type: application/json
+
+{
+  "accessKey": "your_aws_access_key",
+  "secretKey": "your_aws_secret_key"
+}
 ```
 
-### Production
+### Executing Terraform Scripts
+
+To execute a Terraform script and receive real-time output:
+
+1. Connect to the WebSocket server to receive real-time updates
+2. Send a POST request to execute the Terraform script:
 
 ```
-npm run build
-npm start
+POST /api/terraform/apply
 ```
+
+3. The server will respond immediately with a 202 Accepted status
+4. Real-time output will be streamed via WebSocket events:
+   - `terraform-output`: Contains the console output from Terraform
+   - `terraform-status`: Contains status updates (started, completed, error)
+
+### Example Client
+
+An example client is available at:
+
+```
+http://localhost:3000/terraform-client
+```
+
+This client demonstrates how to connect to the WebSocket server and display real-time Terraform execution output.
 
 ## API Endpoints
 
-### POST /api/message
+- `POST /api/message`: Forward a prompt to the AI API
+- `POST /api/keys`: Set AWS credentials
+- `POST /api/terraform/apply`: Execute Terraform scripts
 
-Accepts a prompt and forwards it to the AI API. If the response contains Terraform code blocks, it clears the `terraform-scripts` directory and saves the new code blocks as files.
+## WebSocket Events
 
-**Request Body:**
-```json
-{
-  "prompt": "Your message here"
-}
-```
-
-**Response:**
-The response from the AI API will be returned in this format:
-```json
-{
-  "message": {
-    "role": "assistant",
-    "content": "Response from AI"
-  },
-  "promptInput": "Your message here",
-  "inputTokens": 123,
-  "outputTokens": 456,
-  "cost": 0.000123,
-  "savedTerraformFiles": [
-    {
-      "filePath": "/path/to/terraform-scripts/main-2023-10-25_12-34-56.tf",
-      "fileName": "main-2023-10-25_12-34-56.tf"
-    }
-  ]
-}
-```
-
-The `savedTerraformFiles` field will only be present if Terraform code blocks were found in the response.
-
-### GET /health
-
-Health check endpoint to verify the service is running.
-
-**Response:**
-```json
-{
-  "status": "ok"
-}
-```
-
-## Terraform Code Extraction
-
-The application automatically detects and extracts Terraform code blocks from the AI response. It looks for:
-
-- Code blocks marked with ```terraform, ```tf, or ```hcl
-- Code blocks containing typical Terraform syntax (provider, resource, module, etc.)
-
-Each extracted code block is saved as a separate file in the `terraform-scripts` directory with a filename format of `main-{date-time}.tf`. Before saving new files, the application clears all existing files in the directory.
+- `terraform-output`: Emitted when there's new output from the Terraform execution
+- `terraform-status`: Emitted when the Terraform execution status changes (started, completed, error)
