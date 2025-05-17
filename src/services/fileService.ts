@@ -47,18 +47,49 @@ export const extractTerraformCode = (content: string): string[] => {
   }
 
   try {
+    // Log the content to a file for debugging
+    const logDir = path.resolve(process.cwd(), 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const logPath = path.join(logDir, `terraform-extraction-${Date.now()}.log`);
+    fs.writeFileSync(logPath, `Content to extract from:\n${content}`);
+
     // Match code blocks that are likely Terraform code
     // This regex looks for markdown code blocks with terraform, tf, or hcl language indicators
     // or code blocks that contain typical Terraform syntax
     const terraformRegex = /```(?:terraform|tf|hcl)?\s*((?:provider\s+"|resource\s+"|module\s+"|variable\s+"|output\s+"|data\s+"|locals\s+{|terraform\s+{)[\s\S]*?)```/g;
     
+    // Also try to match code that looks like Terraform even without markdown code blocks
+    const fallbackRegex = /((?:resource\s+"|aws_[a-z_]+\s+"|provider\s+"|module\s+"|variable\s+"|output\s+"|data\s+")[\s\S]*?(?:^}$|\n}\n))/gm;
+    
     const matches: string[] = [];
     let match;
     
+    // First try with markdown code blocks
     while ((match = terraformRegex.exec(content)) !== null) {
       if (match[1]) {
         matches.push(match[1].trim());
       }
+    }
+    
+    // If no matches found with markdown blocks, try the fallback regex
+    if (matches.length === 0) {
+      while ((match = fallbackRegex.exec(content)) !== null) {
+        if (match[1]) {
+          matches.push(match[1].trim());
+        }
+      }
+    }
+    
+    // Log the extracted code
+    if (matches.length > 0) {
+      fs.appendFileSync(logPath, `\n\nExtracted ${matches.length} Terraform code blocks:\n`);
+      matches.forEach((code, index) => {
+        fs.appendFileSync(logPath, `\n--- Block ${index + 1} ---\n${code}\n`);
+      });
+    } else {
+      fs.appendFileSync(logPath, `\n\nNo Terraform code blocks extracted.`);
     }
     
     return matches;
@@ -69,18 +100,17 @@ export const extractTerraformCode = (content: string): string[] => {
 };
 
 /**
- * Adds timestamp to resource names in Terraform code
+ * Adds timestamp to resource and output names in Terraform code and ensures VPC and subnet references use data sources
  * @param code The Terraform code to modify
- * @returns The modified Terraform code with timestamped resource names
+ * @returns The modified Terraform code with timestamped resource names and proper VPC/subnet references
  */
 export const addTimestampToResourceNames = (code: string): string => {
   try {
-    // Generate timestamp in format YYYYMMDD_HHMMSS
+    // Generate timestamp in format YYYYMMDDHHMMSS (no underscores for resource names)
     const now = new Date();
     const timestamp = now.toISOString()
-      .replace(/[-:]/g, '')
-      .replace(/\..+/, '')
-      .replace('T', '_');
+      .replace(/[-:T]/g, '')
+      .replace(/\..+/, '');
     
     // First, collect all resource names and their timestamped versions
     const resourceMap: Record<string, string> = {};
@@ -102,6 +132,33 @@ export const addTimestampToResourceNames = (code: string): string => {
       (match, type, name) => `resource "${type}" "${name}_${timestamp}" {`
     );
     
+    // Add timestamps to output names
+    modifiedCode = modifiedCode.replace(
+      /output\s+"([^"]+)"\s*{/g,
+      (match, name) => `output "${name}_${timestamp}" {`
+    );
+    
+    // Add timestamps to resource name attributes with length limit check and alphanumeric validation
+    modifiedCode = modifiedCode.replace(
+      /name\s*=\s*"([^"]+)"/g,
+      (match, name) => {
+        // Skip if name already contains a timestamp or is a variable reference
+        if (name.includes("${") || name.includes(timestamp)) {
+          return match;
+        }
+        
+        // Create a shortened timestamp (last 8 chars) to avoid exceeding AWS name limits
+        // Replace underscores with hyphens to ensure alphanumeric+hyphen compliance
+        const shortTimestamp = timestamp.slice(-8).replace(/_/g, '-');
+        
+        // Ensure the final name doesn't exceed 32 characters (AWS limit for many resources)
+        const maxBaseLength = 23; // 32 - 1 (hyphen) - 8 (short timestamp)
+        const baseName = name.length > maxBaseLength ? name.slice(0, maxBaseLength) : name;
+        
+        return `name = "${baseName}-${shortTimestamp}"`;
+      }
+    );
+    
     // Then, replace all references to these resources
     for (const [originalName, timestampedName] of Object.entries(resourceMap)) {
       // Replace references like aws_instance.app_server.id
@@ -112,6 +169,24 @@ export const addTimestampToResourceNames = (code: string): string => {
       const bracketRegex = new RegExp(`\\[(\\s*)${originalName}(\\s*)\\.`, 'g');
       modifiedCode = modifiedCode.replace(bracketRegex, `[$1${timestampedName}$2.`);
     }
+    
+    // Replace any hardcoded VPC IDs with data.aws_vpc.default.id
+    modifiedCode = modifiedCode.replace(
+      /vpc_id\s*=\s*(?:"[^"]*"|'[^']*'|<[^>]*>|[^"\s,{}]+)/g,
+      'vpc_id = data.aws_vpc.default.id'
+    );
+    
+    // Replace any subnet references with data.aws_subnets.default.ids
+    modifiedCode = modifiedCode.replace(
+      /subnets\s*=\s*(?:\[[^\]]*\]|var\.[a-zA-Z0-9_]+|"[^"]*"|'[^']*'|<[^>]*>)/g,
+      'subnets = data.aws_subnets.default.ids'
+    );
+    
+    // Also handle singular subnet_id references
+    modifiedCode = modifiedCode.replace(
+      /subnet_id\s*=\s*(?:"[^"]*"|'[^']*'|<[^>]*>|[^"\s,{}]+)/g,
+      'subnet_id = tolist(data.aws_subnets.default.ids)[0]'
+    );
     
     return modifiedCode;
   } catch (error) {
